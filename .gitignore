@@ -1,2 +1,6 @@
-util/target/*
 common/target/*
+util/target/*
+aio/target/*
+.project
+.settings
+.classpath

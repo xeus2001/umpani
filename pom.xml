@@ -62,5 +62,6 @@
 	<modules>
 		<module>common</module>
 		<module>util</module>
+		<module>aio</module>
 	</modules>
 </project>
