@@ -120,7 +120,7 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 			this.keyValue = new Object[size];
 			this.size = 0;
 			// the lowest bit must be 0, because we mask to keys and they can only be found at even indices
-			this.mask = (size - 1) & 0xFFFFFFFE;
+			this.mask = (keyValue.length - 1) & 0xFFFFFFFE;
 		}
 		
 		/**
@@ -254,6 +254,8 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 			// otherwise re-index
 			resize: while(true) {
 				final Object[] keyValue = this.keyValue = new Object[minSize];
+				// the lowest bit must be 0, because we mask to keys and they can only be found at even indices
+				this.mask = (keyValue.length - 1) & 0xFFFFFFFE;
 				for (int i=0; i < oldKeyValue.length;) {
 					final Object key = oldKeyValue[i++];
 					final Object value = oldKeyValue[i++];
