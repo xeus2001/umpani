@@ -98,14 +98,15 @@ public class PrimeGen {
 			getPrimes(array);
 		final long end = System.nanoTime();
 		for (int i=0; i < array.length(); i++) {
-			System.out.println("prime #"+i+"= "+array.get(i));
+			System.out.println("prime #"+i+" = "+array.get(i));
 		}
 		System.out.println("time consumed: "+TimeUnit.NANOSECONDS.toMillis(end-start)+"ms");
 	}
 
 	public static void main(String... args) {
 		// warmup
-		findPrimes(1_000);
-		findPrimes(20_000);
+		findPrimes(10_000);
+		// performance test, search for the first 50,000 prime numbers
+		findPrimes(50_000);
 	}
 }
