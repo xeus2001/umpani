@@ -58,10 +58,9 @@ public class PrimeGen {
 	protected static final long[] getPrimesSingleThreaded(final long maxTime, final TimeUnit maxTimeUnit,final int maxAmount) {
 		final long STOP_TIME = System.currentTimeMillis() + maxTimeUnit.toMillis(maxTime);
 		long[] primes = new long[65536];
-		primes[0] = 2L; // fix later
-		primes[1] = 2L;
-		primes[2] = 3L;
-		int nextPrimeIndex = 3;
+		primes[0] = 2L;
+		primes[1] = 3L;
+		int nextPrimeIndex = 2;
 		long test = 5;
 		search: while (nextPrimeIndex < maxAmount) {
 			// only check time every 256 numbers
@@ -96,7 +95,6 @@ public class PrimeGen {
 			// check next number
 			test += 2;
 		}
-		primes[0]=1L;
 		return Arrays.copyOf(primes,nextPrimeIndex);
 	}
 
@@ -197,7 +195,6 @@ public class PrimeGen {
 		if (maxAmount < 65537) return getPrimesSingleThreaded(maxTime,maxTimeUnit,maxAmount);
 		final long END = System.currentTimeMillis() + maxTimeUnit.toMillis(maxTime);
 		final long[] basePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,65536);
-		basePrimes[0]=2L; // we need to so that, because a division by 1 is always possible
 
 		final int maxThreads = Runtime.getRuntime().availableProcessors();
 //		final int maxThreads = 1;
@@ -227,7 +224,6 @@ public class PrimeGen {
 		
 		// sort them, fix the first prime number which is current 2 and then return
 		Arrays.sort(allPrimes);
-		allPrimes[0]=1L; // fix what we have broken before
 		return allPrimes;
 	}
 
