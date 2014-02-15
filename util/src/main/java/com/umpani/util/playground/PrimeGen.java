@@ -26,6 +26,27 @@ public class PrimeGen {
 	public static final long BLOCK_SIZE = 1 << BLOCK_SHIFT;
 
 	/**
+	 * 	Estimate the inverse square root in a very fast way (used in vectors a lot).
+	 *
+	 *	@param number
+	 *		the number to calculate the inverse square root from.
+	 *	@return
+	 *		the estimated inverse square root.
+	 */
+	public static final double isqrt( final double number ) {
+		final long MAGIC = 0x5fe6eb50c7b537a9L;
+		final double THREE_HALFS = 1.5d;
+		final double x2 = number * 0.5d;
+
+		double y = number;
+		long i = Double.doubleToRawLongBits(y);
+		i = MAGIC - (i >> 1);
+		y = Double.longBitsToDouble(i);
+		y = y * (THREE_HALFS - (x2 * y * y));
+		return y;
+	}
+
+	/**
 	 * Returns the first primes unordered.
 	 * @param primes
 	 * the array to fill with primes, starting with 1. The array must be filled with 0.
@@ -61,13 +82,13 @@ public class PrimeGen {
 						long prime = start < 5 ? 5 : start+1; // start with odd number!
 						search: while (prime < end) {
 							// maximal and minimal divisor to test for this prime
-							final long max = (long)Math.ceil(Math.sqrt(prime));
+							final long max = (long)Math.ceil(isqrt(prime)*prime);
 
 							// try to divide the number by all already found primes (quick exclusion)
 							int thePrimesIndex = 0;
 							for (; thePrimesIndex < thePrimes.length; thePrimesIndex++) {
 								long nextFoundPrime = thePrimes[thePrimesIndex];
-								if (nextFoundPrime==0) break;
+								if (nextFoundPrime==0 || nextFoundPrime > max) break;
 
 								// if it is dividable, it is not prime
 								if ((prime % nextFoundPrime)==0) {
@@ -173,8 +194,14 @@ public class PrimeGen {
 				break search;
 			}
 
+			// maximal and minimal divisor to test for this prime
+			final long max = (long)Math.ceil(isqrt(test)*test);
+
 			// try to divide the number by all already found primes (quick exclusion)
 			for (int i=0; i < nextPrimeIndex; i++) {
+				final long foundPrime = primes[i];
+				if (foundPrime > max) break;
+
 				// if it is dividable, it is not prime
 				if ((test % primes[i])==0) {
 					test+=2; // we don't test even numbers
@@ -193,6 +220,7 @@ public class PrimeGen {
 			// check next number
 			test += 2;
 		}
+		primes[0]=1L;
 		return Arrays.copyOf(primes,nextPrimeIndex);
 	}
 	
@@ -250,7 +278,7 @@ public class PrimeGen {
 		System.out.println("done");
 
 		System.out.println("Running performance tests...");
-		findPrimes(15,TimeUnit.SECONDS,true); // single threaded
-		findPrimes(300_000,15,TimeUnit.SECONDS,true); // multi threaded
+		findPrimes(1,TimeUnit.SECONDS,true); // single threaded
+		findPrimes(300_000,1,TimeUnit.SECONDS,true); // multi threaded
 	}
 }
