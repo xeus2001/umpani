@@ -149,6 +149,54 @@ public class PrimeGen {
 		Arrays.sort(theFinalPrimes);
 		return theFinalPrimes;
 	}
+	
+	/**
+	 * Calculte primes single threaded using the current thread.
+	 * @param maxTime
+	 * the maximal time to be consumed.
+	 * @param maxTimeUnit
+	 * the time unit in which the maxTime was provided.
+	 * @return
+	 * the found primes.
+	 */
+	public static final long[] getPrimes(final long maxTime, final TimeUnit maxTimeUnit ) {
+		final long STOP_TIME = System.currentTimeMillis() + maxTimeUnit.toMillis(maxTime);
+		long[] primes = new long[65536];
+		primes[0] = 2L; // fix later
+		primes[1] = 2L;
+		primes[2] = 3L;
+		int nextPrimeIndex = 3;
+		long test = 5;
+		search: while (true) {
+			// only check time every 256 numbers
+			if ((test & 0xFF)==1 && System.currentTimeMillis() >= STOP_TIME) {
+				break search;
+			}
+
+			// try to divide the number by all already found primes (quick exclusion)
+			for (int i=0; i < nextPrimeIndex; i++) {
+				// if it is dividable, it is not prime
+				if ((test % primes[i])==0) {
+					test+=2; // we don't test even numbers
+					continue search;
+				}
+			}
+
+			// if we reached the end of the primes array, expand it
+			if (nextPrimeIndex >= primes.length) {
+				primes = Arrays.copyOf(primes,primes.length<<1);
+			}
+
+			// add the new prime number
+			primes[nextPrimeIndex++] = test;
+			
+			// check next number
+			test += 2;
+		}
+		return Arrays.copyOf(primes,nextPrimeIndex);
+	}
+	
+	
 	public static void findPrimes(
 		final int amount, final long maxTime, final TimeUnit maxTimeUnit, final boolean showResult
 	) {
@@ -166,19 +214,43 @@ public class PrimeGen {
 			array = getPrimes(array,maxTime,maxTimeUnit);
 		final long end = System.nanoTime();
 		if (showResult) {
-			for (int i=0; i < array.length; i++) {
-				System.out.println("prime #"+i+" = "+array[i]);
+			System.out.println("Calculated "+array.length+" primes multi threaded in "+TimeUnit.NANOSECONDS.toMillis(end-start)+"ms");
+			System.out.println("The biggest found prime was: "+array[array.length-1]);
+		}
+	}
+
+	public static void findPrimes(
+		final long maxTime, final TimeUnit maxTimeUnit, final boolean showResult
+	) {
+		final WeakReference<Object> gcMe = new WeakReference<Object>( new Object() );
+		while (gcMe.get()!=null) {
+			System.gc();
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				Thread.interrupted();
 			}
-			System.out.println("time consumed: "+TimeUnit.NANOSECONDS.toMillis(end-start)+"ms");
+		}
+		long[] array;
+		final long start = System.nanoTime();
+			array = getPrimes(maxTime,maxTimeUnit);
+		final long end = System.nanoTime();
+		if (showResult) {
+			System.out.println("Calculated "+array.length+" primes single threaded in "+TimeUnit.NANOSECONDS.toMillis(end-start)+"ms");
+			System.out.println("The biggest found prime was: "+array[array.length-1]);
 		}
 	}
 
 	public static void main(String... args) {
-		// warmup
-		findPrimes(10_000,10,TimeUnit.SECONDS,false);
-		findPrimes(100_000,1,TimeUnit.SECONDS,false);
+		System.out.print("Warming up... ");
+		findPrimes(300,TimeUnit.MILLISECONDS,false); // warmup single threaded
+		findPrimes(300,TimeUnit.MILLISECONDS,false); // warmup single threaded
+		findPrimes(10_000,10,TimeUnit.SECONDS,false); // warmup multi threaded
+		findPrimes(100_000,1,TimeUnit.SECONDS,false); // warmup multi threaded
+		System.out.println("done");
 
-		// performance test
-		findPrimes(100_000,1,TimeUnit.SECONDS,true);
+		System.out.println("Running performance tests...");
+		findPrimes(15,TimeUnit.SECONDS,true); // single threaded
+		findPrimes(300_000,15,TimeUnit.SECONDS,true); // multi threaded
 	}
 }
