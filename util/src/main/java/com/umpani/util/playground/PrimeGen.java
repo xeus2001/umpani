@@ -231,7 +231,7 @@ public class PrimeGen {
 	public static final void showResults( final String which, final long[] array, final boolean show,long nanos ) {
 		System.out.println("Calculated "+array.length+" primes "+which+" threaded in "+TimeUnit.NANOSECONDS.toMillis(nanos)+"ms");
 		long sum = 0;
-//		for (int i=0; i < 10; i++) System.out.println("prime #"+i+" = "+array[i]);
+//		for (int i=0; i < 1000; i++) System.out.println("prime #"+i+" = "+array[i]);
 		for (int i=0; i < array.length; i++) sum += array[i];
 		System.out.println("The biggest found prime was: "+array[array.length-1]+", sum = "+sum);
 	}
