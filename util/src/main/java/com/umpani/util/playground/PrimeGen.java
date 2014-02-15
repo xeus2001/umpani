@@ -118,14 +118,22 @@ public class PrimeGen {
 	 * might contain some prime numbers is not calculated.
 	 */
 	protected static final class PrimeNumberCalculator extends Thread {
-		protected PrimeNumberCalculator(final AtomicLong theLong, final long[] basePrimes, final long endMillis) {
+		protected PrimeNumberCalculator(
+			final AtomicLong nextBlock,
+			final AtomicLong foundPrimes, final long maxPrimes,
+			final long[] basePrimes, final long endMillis
+		) {
+			this.MAX_PRIMES = maxPrimes;
 			this.basePrimes = basePrimes;
-			this.nextBlock = theLong;
+			this.nextBlock = nextBlock;
+			this.foundPrimes = foundPrimes;
 			this.STOP_TIME = endMillis;
 		}
 
+		private final long MAX_PRIMES;
 		private final long STOP_TIME;
 		private final AtomicLong nextBlock;
+		private final AtomicLong foundPrimes;
 		private final long[] basePrimes;
 		public volatile long[] primes = new long[16384];
 		public volatile int putIndex;
@@ -147,13 +155,16 @@ public class PrimeGen {
 				final long END = START + BLOCK_SIZE;
 				long test = START+1; // start with odd number!
 				if (test <= MIN) test = MIN+2;
+				
+				// remember this to update the amount of found primes
+				final int oldPutIndex = putIndex;
 	
 				// the test loop for the numbers in the current block
 				search: while (test < END) {
 					// maximal and minimal divisor to test for this prime
 					final long MAX = (long)Math.ceil(isqrt(test)*(double)test);
 //					final long MAX = (long)Math.ceil(Math.sqrt(test));
-	
+
 					// try to divide the number by all base primes (quick exclusion)
 					for (int i=0; i < basePrimes.length; i++) {
 						// copy to stack for faster access
@@ -178,6 +189,9 @@ public class PrimeGen {
 					primes[putIndex++] = test;
 					test += 2;
 				}
+				
+				// update the amount of calculates primes and abort calculation if enough primes where found
+				if (foundPrimes.addAndGet(putIndex - oldPutIndex) > MAX_PRIMES) break;
 			}
 			// export primes and index
 			this.primes = primes;
@@ -202,10 +216,11 @@ public class PrimeGen {
 		final long[] basePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,65536);
 
 		final AtomicLong blockCounter = new AtomicLong(basePrimes[65535] & (~(BLOCK_SIZE-1)));
+		final AtomicLong foundPrimesAtomic = new AtomicLong(65536);
 		final PrimeNumberCalculator[] threads = new PrimeNumberCalculator[CORES];
 		// create all threads
 		for (int i=0; i < threads.length; i++) {
-			threads[i] = new PrimeNumberCalculator(blockCounter,basePrimes,END);
+			threads[i] = new PrimeNumberCalculator(blockCounter,foundPrimesAtomic,maxAmount,basePrimes,END);
 			threads[i].start();
 		}
 		// wait for all threads to be done
@@ -219,14 +234,20 @@ public class PrimeGen {
 		// copy together the results
 		int foundPrimes = 65536;
 		for (int i=0; i < threads.length; i++) foundPrimes += threads[i].putIndex;
-		final long[] allPrimes = Arrays.copyOf(basePrimes,foundPrimes);
+		long[] allPrimes = Arrays.copyOf(basePrimes,foundPrimes);
 		for (int i=0,n=65536; i < threads.length; i++) {
 			System.arraycopy(threads[i].primes,0, allPrimes,n, threads[i].putIndex);
 			n += threads[i].putIndex;
 		}
-		
+
 		// sort them, fix the first prime number which is current 2 and then return
 		Arrays.sort(allPrimes);
+
+		// if we've too much, truncate
+		if (foundPrimes > maxAmount) {
+			allPrimes = Arrays.copyOf(allPrimes,maxAmount);
+		}
+		
 		return allPrimes;
 	}
 
@@ -265,31 +286,31 @@ public class PrimeGen {
 		System.out.println("Checked "+((biggestPrimeFound/ms)/cores)+" numbers per millisecond per core");
 		System.out.println("Checked "+((biggestPrimeFound/s)/cores)+" numbers per second per core");
 	}
-	public static final void findPrimesMultiThreaded(final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
+	public static final void findPrimesMultiThreaded(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
-			array = getPrimesMultiThreaded(maxTime,maxTimeUnit,Integer.MAX_VALUE);
+			array = getPrimesMultiThreaded(maxTime,maxTimeUnit,maxPrimes);
 		final long end = System.nanoTime();
 		showResults(CORES,array,show,end-start);
 	}
 
-	public static void findPrimesSingleThreadedPrimes(final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
+	public static void findPrimesSingleThreadedPrimes(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
-			array = getPrimesSingleThreaded(maxTime,maxTimeUnit,Integer.MAX_VALUE);
+			array = getPrimesSingleThreaded(maxTime,maxTimeUnit,maxPrimes);
 		final long end = System.nanoTime();
 		showResults(1,array,show,end-start);
 	}
 
 	public static void main(String... args) {
 		System.out.println("Warming up... ");
-		findPrimesMultiThreaded(2000,TimeUnit.MILLISECONDS,false); // warms up multi and single threaded
+		findPrimesMultiThreaded(Integer.MAX_VALUE,2000,TimeUnit.MILLISECONDS,false); // warms up multi and single threaded
 		System.out.println("done\n\n");
 
 		System.out.println("Running performance tests...");
-		findPrimesSingleThreadedPrimes(15,TimeUnit.SECONDS,true); // single threaded
-		findPrimesMultiThreaded(15,TimeUnit.SECONDS,true); // multi threaded
+		findPrimesSingleThreadedPrimes(1_000_000, 10,TimeUnit.SECONDS,true); // single threaded
+		findPrimesMultiThreaded(1_000_000, 10,TimeUnit.SECONDS,true); // multi threaded
 	}
 }
