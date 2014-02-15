@@ -268,7 +268,7 @@ public class PrimeGen {
 	}
 	public static final void showResults( final int cores, final long[] array, final boolean show,long nanos ) {
 		final long ms = TimeUnit.NANOSECONDS.toMillis(nanos);
-		final long s = TimeUnit.MILLISECONDS.toSeconds(ms);
+		final long s = TimeUnit.MILLISECONDS.toSeconds(ms)>0 ? TimeUnit.MILLISECONDS.toSeconds(ms) : 1;
 		System.out.println("Calculated "+array.length+" primes at "+cores+" cores in "+ms+"ms");
 		long sum = 0;
 		if (show) {
@@ -306,11 +306,11 @@ public class PrimeGen {
 
 	public static void main(String... args) {
 		System.out.println("Warming up... ");
-		findPrimesMultiThreaded(Integer.MAX_VALUE,2000,TimeUnit.MILLISECONDS,false); // warms up multi and single threaded
+		findPrimesMultiThreaded(Integer.MAX_VALUE, 2,TimeUnit.SECONDS,false); // warms up multi and single threaded
 		System.out.println("done\n\n");
 
 		System.out.println("Running performance tests...");
-		findPrimesSingleThreadedPrimes(1_000_000, 10,TimeUnit.SECONDS,true); // single threaded
-		findPrimesMultiThreaded(1_000_000, 10,TimeUnit.SECONDS,true); // multi threaded
+		findPrimesSingleThreadedPrimes(100_000, 60,TimeUnit.SECONDS,true); // single threaded
+		findPrimesMultiThreaded(10_000_000, 60,TimeUnit.SECONDS,true); // multi threaded
 	}
 }
