@@ -57,14 +57,14 @@ public class PrimeGen {
 	 */
 	protected static final long[] getPrimesSingleThreaded(final long maxTime, final TimeUnit maxTimeUnit,final int maxAmount) {
 		final long STOP_TIME = System.currentTimeMillis() + maxTimeUnit.toMillis(maxTime);
-		long[] primes = new long[65536];
+		long[] primes = new long[8*1024*1024];
 		primes[0] = 2L;
 		primes[1] = 3L;
 		int nextPrimeIndex = 2;
 		long test = 5;
 		search: while (nextPrimeIndex < maxAmount) {
-			// only check time every 256 numbers
-			if ((test & 0xFF)==1 && System.currentTimeMillis() >= STOP_TIME) {
+			// only check time every 4096 numbers
+			if ((test & 0xFFF)==1 && System.currentTimeMillis() >= STOP_TIME) {
 				break search;
 			}
 
@@ -73,7 +73,7 @@ public class PrimeGen {
 //			final long MAX = (long)Math.ceil(Math.sqrt(test));
 
 			// try to divide the number by all already found primes (quick exclusion)
-			for (int i=0; i <= primes.length; i++) {
+			for (int i=1; i < primes.length; i++) {
 				final long prime = primes[i];
 				if (prime==0 || prime > MAX) break;
 
@@ -109,6 +109,11 @@ public class PrimeGen {
 	private static final int CORES = Runtime.getRuntime().availableProcessors();
 
 	/**
+	 * The number of base primes to use.
+	 */
+	private static final int BASE_PRIMES = Integer.highestOneBit(2048 -1)<<1;
+
+	/**
 	 * One of the threads will hols the first 16,384 prime numbers, because for the first 16,384 primes it doesn't 
 	 * make sense to use multi threading. Additionally our algorithm relies on the fact all prime numbers that are
 	 * less/equal to sqrt(test) are always found, which can't be guaranteed at all, but we can reduce the risk of
@@ -135,14 +140,17 @@ public class PrimeGen {
 		private final AtomicLong nextBlock;
 		private final AtomicLong foundPrimes;
 		private final long[] basePrimes;
-		public volatile long[] primes = new long[16384];
+		public volatile long[] primes = new long[8*1024*1024];
 		public volatile int putIndex;
 
 		@Override
-		public void run() {
+		public final void run() {
 			// copy to stack to be faster
 			final long[] basePrimes = this.basePrimes;
-			final long MIN = basePrimes[65535];
+			final long MIN = basePrimes[BASE_PRIMES-1];
+			final long MAX_PRIMES = this.MAX_PRIMES;
+			final AtomicLong foundPrimes = this.foundPrimes;
+			final AtomicLong nextBlock = this.nextBlock;
 			
 			// the index where to put the next found prime number
 			int putIndex = this.putIndex;
@@ -159,14 +167,14 @@ public class PrimeGen {
 				// remember this to update the amount of found primes
 				final int oldPutIndex = putIndex;
 	
+				// maximal and minimal divisor to test for this prime
+				final long MAX = (long)Math.ceil(isqrt(END)*(double)END);
+//				final long MAX = (long)Math.ceil(Math.sqrt(END));
+
 				// the test loop for the numbers in the current block
 				search: while (test < END) {
-					// maximal and minimal divisor to test for this prime
-					final long MAX = (long)Math.ceil(isqrt(test)*(double)test);
-//					final long MAX = (long)Math.ceil(Math.sqrt(test));
-
 					// try to divide the number by all base primes (quick exclusion)
-					for (int i=0; i < basePrimes.length; i++) {
+					for (int i=1; i < basePrimes.length; i++) {
 						// copy to stack for faster access
 						final long prime = basePrimes[i];
 
@@ -211,12 +219,12 @@ public class PrimeGen {
 	 * the found primes.
 	 */
 	public static final long[] getPrimesMultiThreaded( final long maxTime, final TimeUnit maxTimeUnit, final int maxAmount ) {
-		if (maxAmount < 65537) return getPrimesSingleThreaded(maxTime,maxTimeUnit,maxAmount);
+		if (maxAmount < BASE_PRIMES+1) return getPrimesSingleThreaded(maxTime,maxTimeUnit,maxAmount);
 		final long END = System.currentTimeMillis() + maxTimeUnit.toMillis(maxTime);
-		final long[] basePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,65536);
+		final long[] basePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,BASE_PRIMES);
 
-		final AtomicLong blockCounter = new AtomicLong(basePrimes[65535] & (~(BLOCK_SIZE-1)));
-		final AtomicLong foundPrimesAtomic = new AtomicLong(65536);
+		final AtomicLong blockCounter = new AtomicLong(basePrimes[BASE_PRIMES-1] & (~(BLOCK_SIZE-1)));
+		final AtomicLong foundPrimesAtomic = new AtomicLong(BASE_PRIMES);
 		final PrimeNumberCalculator[] threads = new PrimeNumberCalculator[CORES];
 		// create all threads
 		for (int i=0; i < threads.length; i++) {
@@ -232,10 +240,10 @@ public class PrimeGen {
 		}
 
 		// copy together the results
-		int foundPrimes = 65536;
+		int foundPrimes = BASE_PRIMES;
 		for (int i=0; i < threads.length; i++) foundPrimes += threads[i].putIndex;
 		long[] allPrimes = Arrays.copyOf(basePrimes,foundPrimes);
-		for (int i=0,n=65536; i < threads.length; i++) {
+		for (int i=0,n=BASE_PRIMES; i < threads.length; i++) {
 			System.arraycopy(threads[i].primes,0, allPrimes,n, threads[i].putIndex);
 			n += threads[i].putIndex;
 		}
@@ -286,31 +294,36 @@ public class PrimeGen {
 		System.out.println("Checked "+((biggestPrimeFound/ms)/cores)+" numbers per millisecond per core");
 		System.out.println("Checked "+((biggestPrimeFound/s)/cores)+" numbers per second per core");
 	}
-	public static final void findPrimesMultiThreaded(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
+	public static final long[] findPrimesMultiThreaded(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
 			array = getPrimesMultiThreaded(maxTime,maxTimeUnit,maxPrimes);
 		final long end = System.nanoTime();
 		showResults(CORES,array,show,end-start);
+		return array;
 	}
 
-	public static void findPrimesSingleThreadedPrimes(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
+	public static long[] findPrimesSingleThreadedPrimes(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
 			array = getPrimesSingleThreaded(maxTime,maxTimeUnit,maxPrimes);
 		final long end = System.nanoTime();
 		showResults(1,array,show,end-start);
+		return array;
 	}
 
 	public static void main(String... args) {
 		System.out.println("Warming up... ");
-		findPrimesMultiThreaded(Integer.MAX_VALUE, 2,TimeUnit.SECONDS,false); // warms up multi and single threaded
-		System.out.println("done\n\n");
+		findPrimesMultiThreaded(Integer.MAX_VALUE, 3,TimeUnit.SECONDS,false); // warms up multi and single threaded
+		final long[] primes = getPrimesMultiThreaded(10,TimeUnit.SECONDS,BASE_PRIMES);
+		System.out.println("done");
+		System.out.println("Max possible prime is: "+(primes[BASE_PRIMES-1]*primes[BASE_PRIMES-1]));
+		System.out.println("\n\n");
 
 		System.out.println("Running performance tests...");
-		findPrimesSingleThreadedPrimes(100_000, 60,TimeUnit.SECONDS,true); // single threaded
-		findPrimesMultiThreaded(10_000_000, 60,TimeUnit.SECONDS,true); // multi threaded
+		findPrimesSingleThreadedPrimes(10_000_000, 1,TimeUnit.SECONDS,true); // single threaded
+		findPrimesMultiThreaded(10_000_000, 1,TimeUnit.SECONDS,true); // multi threaded
 	}
 }
