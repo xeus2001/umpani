@@ -1,13 +1,9 @@
 package com.umpani.util.playground;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @SuppressWarnings("restriction")
 public class PrimeGen {
@@ -265,7 +261,7 @@ public class PrimeGen {
 
 	
 	public static final long[] getPrimesBetween( final long start, final long end ) {
-		final long[] testBasePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,2048);
+		final long[] testBasePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,16384);
 		final byte[] primePage = new byte[(int)(end-start)];
 		int found = primePage.length;
 		for (int i=0; i < testBasePrimes.length; i++) {
@@ -326,6 +322,7 @@ public class PrimeGen {
 		System.out.println("Checked "+((biggestPrimeFound/s)/cores)+" numbers per second per core");
 	}
 	public static final long[] findPrimesTest(final int maxPrimes, final boolean show) {
+		System.out.println("findPrimesTest --------------------------------------------------------------------------");
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
@@ -335,6 +332,7 @@ public class PrimeGen {
 		return array;
 	}
 	public static final long[] findPrimesMultiThreaded(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
+		System.out.println("findPrimesMultiThreaded -----------------------------------------------------------------");
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
@@ -344,6 +342,7 @@ public class PrimeGen {
 		return array;
 	}
 	public static long[] findPrimesSingleThreadedPrimes(final int maxPrimes, final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
+		System.out.println("findPrimesSingleThreadedPrimes ----------------------------------------------------------");
 		realGC();
 		long[] array;
 		final long start = System.nanoTime();
@@ -365,8 +364,8 @@ public class PrimeGen {
 		System.out.println("done\n\n");
 
 		System.out.println("Running performance tests...");
-		findPrimesTest(1299710, true); // single threaded
-		findPrimesSingleThreadedPrimes(100_000, 10,TimeUnit.SECONDS,true); // single threaded
-		findPrimesMultiThreaded(100_000, 10,TimeUnit.SECONDS,true); // multi threaded
+		findPrimesTest(179424673+1, true); // single threaded
+//		findPrimesSingleThreadedPrimes(100_000, 60,TimeUnit.SECONDS,true); // single threaded
+//		findPrimesMultiThreaded(10_000_000, 60,TimeUnit.SECONDS,true); // multi threaded
 	}
 }
