@@ -104,6 +104,11 @@ public class PrimeGen {
 	private static final long BLOCK_SIZE = Integer.highestOneBit(65536 -1)<<1;
 
 	/**
+	 * The number of cores to use in multi-threaded calculations.
+	 */
+	private static final int CORES = Runtime.getRuntime().availableProcessors();
+
+	/**
 	 * One of the threads will hols the first 16,384 prime numbers, because for the first 16,384 primes it doesn't 
 	 * make sense to use multi threading. Additionally our algorithm relies on the fact all prime numbers that are
 	 * less/equal to sqrt(test) are always found, which can't be guaranteed at all, but we can reduce the risk of
@@ -196,10 +201,8 @@ public class PrimeGen {
 		final long END = System.currentTimeMillis() + maxTimeUnit.toMillis(maxTime);
 		final long[] basePrimes = getPrimesSingleThreaded(10,TimeUnit.SECONDS,65536);
 
-		final int maxThreads = Runtime.getRuntime().availableProcessors();
-//		final int maxThreads = 1;
 		final AtomicLong blockCounter = new AtomicLong(basePrimes[65535] & (~(BLOCK_SIZE-1)));
-		final PrimeNumberCalculator[] threads = new PrimeNumberCalculator[maxThreads];
+		final PrimeNumberCalculator[] threads = new PrimeNumberCalculator[CORES];
 		// create all threads
 		for (int i=0; i < threads.length; i++) {
 			threads[i] = new PrimeNumberCalculator(blockCounter,basePrimes,END);
@@ -242,8 +245,10 @@ public class PrimeGen {
 			}
 		}
 	}
-	public static final void showResults( final String which, final long[] array, final boolean show,long nanos ) {
-		System.out.println("Calculated "+array.length+" primes "+which+" threaded in "+TimeUnit.NANOSECONDS.toMillis(nanos)+"ms");
+	public static final void showResults( final int cores, final long[] array, final boolean show,long nanos ) {
+		final long ms = TimeUnit.NANOSECONDS.toMillis(nanos);
+		final long s = TimeUnit.MILLISECONDS.toSeconds(ms);
+		System.out.println("Calculated "+array.length+" primes at "+cores+" cores in "+ms+"ms");
 		long sum = 0;
 		if (show) {
 			for (int i=1; i <= array.length; i*=10) {
@@ -255,7 +260,10 @@ public class PrimeGen {
 //			if (show && prime==15485863) System.out.println("15485863 is prime #"+i);
 			sum += prime;
 		}
-		System.out.println("The biggest found prime was: "+array[array.length-1]+", sum = "+sum);
+		final long biggestPrimeFound = array[array.length-1];
+		System.out.println("The biggest found prime was prime #"+array.length+" and is "+biggestPrimeFound+", sum = "+sum);
+		System.out.println("Checked "+((biggestPrimeFound/ms)/cores)+" numbers per millisecond per core");
+		System.out.println("Checked "+((biggestPrimeFound/s)/cores)+" numbers per second per core");
 	}
 	public static final void findPrimesMultiThreaded(final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
 		realGC();
@@ -263,7 +271,7 @@ public class PrimeGen {
 		final long start = System.nanoTime();
 			array = getPrimesMultiThreaded(maxTime,maxTimeUnit,Integer.MAX_VALUE);
 		final long end = System.nanoTime();
-		showResults("multi",array,show,end-start);
+		showResults(CORES,array,show,end-start);
 	}
 
 	public static void findPrimesSingleThreadedPrimes(final long maxTime, final TimeUnit maxTimeUnit, final boolean show) {
@@ -272,7 +280,7 @@ public class PrimeGen {
 		final long start = System.nanoTime();
 			array = getPrimesSingleThreaded(maxTime,maxTimeUnit,Integer.MAX_VALUE);
 		final long end = System.nanoTime();
-		showResults("single",array,show,end-start);
+		showResults(1,array,show,end-start);
 	}
 
 	public static void main(String... args) {
