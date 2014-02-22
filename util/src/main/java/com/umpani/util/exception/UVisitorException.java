@@ -7,23 +7,31 @@ package com.umpani.util.exception;
 @SuppressWarnings("serial")
 public abstract class UVisitorException extends Exception {
 	/**
-	 * 	Creates a exception to signal something to the visitor.
+	 * Constructs a new exception to signal something to the visitor.
 	 */
-	public UVisitorException() {}
+	public UVisitorException() {
+		super(null,null,false,true);
+	}
+
+    /**
+     * Constructs a new exception to signal something to the visitor with the specified detail message, cause and
+     * optionally a stack trace or not.
+     *
+     * @param message
+     * the detail message.
+     * @param cause
+     * the cause. (A {@code null} value is permitted, and indicates that the cause is nonexistent or unknown.)
+     * @param enableSuppression
+     * whether or not suppression is enabled or disabled.
+     * @param writableStackTrace
+     * whether or not the stack trace should be writable.
+     */
+    public UVisitorException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+        super(message, cause, enableSuppression, writableStackTrace);
+    }
 
 	@Override
 	public Throwable fillInStackTrace() {
 		return this;
-	}
-
-	/**
-	 * This method shall be invoked if the underlying visiting method has caught an unknown {@link UVisitorException}. 
-	 * This method will throw an {@link IllegalStateException} with a unique message text so that all visiting methods 
-	 * throw the same error for the same reason.
-	 * @throws IllegalStateException
-	 * throws this exception.
-	 */
-	public final void unknow() throws IllegalStateException {
-		throw new IllegalStateException("Caught unknown visitor exception",this);
 	}
 }

@@ -9,7 +9,7 @@ import java.util.Set;
 
 import com.umpani.util.exception.UClassCastException;
 import com.umpani.util.exception.UReadOnlyException;
-import com.umpani.util.exception.UVisitorException;
+import com.umpani.util.exception.UVisitorFailedException;
 import com.umpani.util.exception.UVisitorModifiedException;
 import com.umpani.util.exception.UVisitorRemoveException;
 import com.umpani.util.exception.UVisitorReplaceException;
@@ -31,36 +31,6 @@ import com.umpani.util.visitors.UMapVisitor;
  * wast a single byte of memory and it may be filled up to 100% without any performance impact. Due to the exponential 
  * growth of the hash map there is no need to start with an optimal size. This is the reason why this hash map has no 
  * parameters, nothing like load factor or any other setting. The hash map is automatically optimized.
- *
- * </p><p><b>WARNING</b>: This hash map is not thread safe and one instance of this hash map <b>must</b> only be used 
- * by one thread at a time. It is recommended to keep long living objects as {@link UOffHeapMap} in memory and only to 
- * de-serialize them temporary to modify them. In that case modification is easy, because only one thread has the 
- * de-serialized instance of the object. This is called transactional memory pattern or optimistic modification. You
- * create a copy of the object, then you modify it and finally you write the modification back, hoping that the 
- * write back will be successfull and that the object was not modified in the mean time by another thread. If it was, 
- * the whole modification is simply repeated, therefore every modification runs in such a loop:
- * <pre>
- *	while(true) {
- *		// start a transaction
- *		try (UTransaction t = db.beginTransaction()) {
- *			// read foo from db, add it into the transaction
- *			// t.add will clone foo and return a writeable version
- *			final Foo foo = t.add( db.get(key) );
- *
- *			// modify foo
- *			foo.setName("test");
- *			foo.setValue(100);
- *
- *			// commit the changes and repeat if commit failed
- *			if (t.commit()) break;
- *		}
- *	}
- * </pre>
- * Doing it this way in an concurrent environment gurantees that at least one thread will be able to successfully 
- * perform a modification, even with multiple objects being modified. Additionally <tt>db</tt> should gurantee that 
- * threads are treated fair in a volatile environment, so it should prevent that any thread is very unlucky and 
- * therefore executing an expensive transaction in an endless loop, for example because it is always slower as other 
- * threads.
  *
  * @param <K>
  * the key type.
@@ -146,7 +116,7 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 		/**
 		 * Returns true if this data array is sealed.
 		 */
-		protected final boolean isSealed() {
+		protected final boolean isReadOnly() {
 			return (options & OPT_READONLY) == OPT_READONLY;
 		}
 
@@ -162,7 +132,7 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 			int i = key.hashCode() & mask;
 			for (int m=_bucketSize(keyValue.length); m > 0; m--) {
 				final Object k = keyValue[i];
-				if (k!=null && (k==key || k.equals(key))) return i;
+				if (k!=null && (k==key || (k.hashCode()==key.hashCode() && k.equals(key)))) return i;
 				i = (i+2) & mask;
 			}
 			return -1;
@@ -196,7 +166,8 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 		 * Returns the index of the next key-value pair in the keyValue array or -1 if no further valid key-value pair 
 		 * is contained in the array.
 		 * @param start
-		 * the index where to start the search, must be an even value (0,2,4...).
+		 * the index where to start the search, must be an even value (0,2,4...). If at the start position a valid 
+		 * key-value pair is located, the method returns the value of start.
 		 * @return
 		 * the index of the key of the next valid key-value pair or -1 if no further valid key-value pair is contained 
 		 * in the keyValue array.
@@ -230,8 +201,14 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 			int i = key.hashCode() & mask;
 			for (int m=_bucketSize(keyValue.length); m > 0; m--) {
 				final Object k = keyValue[i];
-				if (k==null && firstEmpty < 0) firstEmpty = i;
-				if (k==key || k.equals(key)) return i;
+				if (k==null) {
+					if (firstEmpty < 0) {
+						firstEmpty = i;
+					}
+				} else
+				if (key==k || (key.hashCode()==k.hashCode() && key.equals(k))) {
+					return i;
+				}
 				i = (i+2) & mask;
 			}
 			return firstEmpty;
@@ -291,7 +268,7 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 	 * true if this map or the underlying data is read-only.
 	 */
 	public final boolean isReadOnly() {
-		return ((options & OPT_READONLY)==OPT_READONLY) || (data!=null && data.isSealed());
+		return ((options & OPT_READONLY)==OPT_READONLY) || (data!=null && data.isReadOnly());
 	}
 
 	/**
@@ -619,8 +596,7 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 	 * the key iterator.
 	 */
 	public final Iterator<K> iterateKeys() {
-//		return new UMapKeyIterator<K,V>(this);
-		return null;
+		return new UMapKeyIterator<K,V>(this);
 	}
 	
 	/**
@@ -629,8 +605,7 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 	 * the value iterator.
 	 */
 	public final Iterator<V> iterateValues() {
-//		return new UMapValueIterator<K,V>(this);
-		return null;
+		return new UMapValueIterator<K,V>(this);
 	}
 
 	@Override
@@ -651,20 +626,21 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 	 * {@link WVisitorReplaceValueException}. Only if you for example want to swap values or you want to modify an
 	 * key (like lowercasing it), then you must modify the map and afterwards throw an {@link WVisitorModifiedException}.
 	 * 
-	 * </p><p>The method does not gurantee that the same key is not visited twice, if the underlying map is modified.
+	 * </p><p>The method does not gurantee that the same key is not visited twice, if the underlying map is modified
+	 * and a {@link UVisitorModifiedException} was thrown. Be aware that if the underlying map is modified it is as
+	 * well no longer guaranteed that the last invocation of the visitor has the <tt>isLastVisit</tt> property set, 
+	 * because for example the last item might just have been deleted.
 	 *
 	 * @param visitor
 	 * the visitor to be called for every key-value pair of this map.
-	 * @param initialValue
-	 * the initial value for the result to be passed into the first visitor call.
 	 * @return
 	 * the result of the visit.
-	 * @throws IllegalStateException
-	 * if an unknown {@link WVisitorException} is throw.
+	 * @throws UVisitorFailedException
+	 * if any exception was thrown, check the cause.
 	 */
 	@SuppressWarnings("unchecked")
-	public final <R> R forEach( final UMapVisitor<K,V,R> visitor ) {
-		return forEach(visitor, null);
+	public final <R, T extends UMapVisitor<K,V,R>> R forEach( final T visitor ) throws UVisitorFailedException {
+		return forEach((R)null, visitor);
 	}
 		
 	/**
@@ -675,26 +651,28 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 	 * {@link UVisitorReplaceException}. Only if you want, for example, to swap values or you want to modify an
 	 * key (like lowercasing it), then you must modify the map and afterwards throw an {@link UVisitorModifiedException}.
 	 * 
-	 * </p><p>The method does not gurantee that the same key is not visited twice, if the underlying map is modified.
+	 * </p><p>The method does not gurantee that the same key is not visited twice, if the underlying map is modified
+	 * and a {@link UVisitorModifiedException} was thrown. Be aware that if the underlying map is modified it is as
+	 * well no longer guaranteed that the last invocation of the visitor has the <tt>isLastVisit</tt> property set, 
+	 * because for example the last item might just have been deleted.
 	 *
+	 * @param result
+	 * the initial value for the result to be passed into the first visitor call.
 	 * @param visitor
 	 * the visitor to be called for every key-value pair of this map.
-	 * @param initialValue
-	 * the initial value for the result to be passed into the first visitor call.
 	 * @return
 	 * the result of the visit.
-	 * @throws IllegalStateException
-	 * if an unknown {@link UVisitorException} is throw.
+	 * @throws UVisitorFailedException
+	 * if any exception was thrown, check the cause.
 	 */
 	@SuppressWarnings("unchecked")
-	public final <R> R forEach( final UMapVisitor<K,V,R> visitor, R initialValue ) {
+	public final <R, T extends UMapVisitor<K,V,R>> R forEach( R result, final T visitor ) throws UVisitorFailedException {
 		final Data data = this.data;
 		int size;
-		if (data==null || (size=data.size)==0) return initialValue;
+		if (data==null || (size=data.size)==0) return result;
 
 		iterator: while(true) {
 			final Object[] keyValue = data.keyValue;
-			R result = initialValue;
 			for (int j=0,i=0; i < keyValue.length; ) {
 				final K key = (K)keyValue[i++];
 				final V value = (V)unboxValue(keyValue[i++]);
@@ -710,22 +688,23 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 						if (isReadOnly()) throw new UReadOnlyException(visitor,"forEach",this);
 						keyValue[i-1] = boxValue(e.replacement);
 					} catch (UVisitorModifiedException e) {
-						// this is sick, if the items have beein re-index
+						// if the items have beein re-index
 						if (keyValue != data.keyValue) {
-							// in that case we've no other possibility, we need to restart the visit
+							// this is sick, in that case we've no other possibility, we need to restart the visit
 							continue iterator;
 						}
+						// otherwise we don't really care about the modification
 					} catch (UVisitorReturnException e) {
 						 return (R)e.result;
-					} catch (UVisitorException e) {
-						e.unknow();
+					} catch (Exception e) {
+						throw new UVisitorFailedException("Unknown exception while iterating key-value pairs",e);
 					}
 				}
 			}
 			return result;
 		}
 	}
-	
+
 	/**
 	 * Casts the value of the provided key to the provided class, writes the casted value back into the map and 
 	 * then returns the casted value. If the value is null, no casting is done and null is returned. If the value is
@@ -1184,10 +1163,10 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 		if (index < 0) return null;
 		
 		keyValue[index++] = null;
-		final Object value = keyValue[index];
+		final Object oldValue = keyValue[index];
 		keyValue[index] = null;
-		--data.size;
-		return (V)unboxValue(value);
+		data.size--;
+		return (V)unboxValue(oldValue);
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -1202,13 +1181,26 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 		}
 	}
 
+    /**
+     * Removes all of the key-value pairs from the underlying data array. The operation will fail if this map is 
+     * or the underlying data is read-only; otherwise it will result in an empty data array. 
+     */
 	@Override
 	public final void clear() {
 		if (isReadOnly()) throw new UReadOnlyException(this,"clear",this);
-		if (data!=null && data.size!=0) {
-			data.size = 0;
-			Arrays.fill(data.keyValue,null);
+		if (this.data!=null) {
+			this.data.size = 0;
+			this.data.keyValue = new Object[4];
 		}
+	}
+
+    /**
+     * Removes the mapping of this map to the underlying data and revokes the read-only state. The underlying data
+     * will not be modified, therefore other map instances that map to the same data will not be effected.
+     */
+	public final void reset() {
+		this.data = null;
+		this.options = 0;
 	}
 
 	@Override
@@ -1242,14 +1234,13 @@ public class UMap<K,V> extends UDuckTyped implements Iterable<Map.Entry<K,V>>, M
 		}
 		int index = data.indexForKey(key);
 		while (index < 0) {
-			data.compact(data.size<<1);
+			data.compact(data.keyValue.length<<1);
 			index = data.indexForKey(key);
 		}
 		final Object[] keyValue = data.keyValue;
-		if (keyValue[index]!=null) {
-			++data.size;
-		} else {
-			keyValue[index] = key;
+		if (keyValue[index]==null) {
+			keyValue[index] = unboxKey(key);
+			data.size++;
 		}
 		final Object oldValue = unboxValue(keyValue[++index]);
 		keyValue[index] = boxValue(newValue);
