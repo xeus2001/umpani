@@ -12,4 +12,10 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
+bin/umpani
+bin/umpani.exe
+web/umpani
+web/umpani.exe
+web/umpani.wasm
+.idea
